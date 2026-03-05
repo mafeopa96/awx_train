@@ -1,0 +1,51 @@
+---
+- name: Find all scan result files
+  find:
+    paths: "{{ report_dir }}"
+    patterns: "*.txt"
+  register: scan_files
+  delegate_to: localhost
+  run_once: true
+
+- name: Consolidate all scan results
+  shell: cat {{ report_dir }}/*.txt > {{ report_dir }}/consolidated_report.txt
+  delegate_to: localhost
+  run_once: true
+  when: scan_files.matched > 0
+
+- name: Generate HTML report
+  template:
+    src: report.html.j2
+    dest: "{{ report_dir }}/scan_report.html"
+  delegate_to: localhost
+  run_once: true
+
+- name: Create summary JSON
+  copy:
+    content: |
+      {
+        "scan_timestamp": "{{ scan_timestamp }}",
+        "deployment_type": "{{ deployment_type }}",
+        "total_hosts_scanned": {{ ansible_play_hosts | length }},
+        "report_location": "{{ report_dir }}",
+        "files_generated": [
+          "consolidated_report.txt",
+          "scan_report.html"
+        ]
+      }
+    dest: "{{ report_dir }}/summary.json"
+  delegate_to: localhost
+  run_once: true
+
+- name: Display report location
+  debug:
+    msg:
+      - "============================================"
+      - "SCAN COMPLETED SUCCESSFULLY"
+      - "============================================"
+      - "Report Directory: {{ report_dir }}"
+      - "HTML Report: {{ report_dir }}/scan_report.html"
+      - "Text Report: {{ report_dir }}/consolidated_report.txt"
+      - "Summary JSON: {{ report_dir }}/summary.json"
+      - "============================================"
+  run_once: true

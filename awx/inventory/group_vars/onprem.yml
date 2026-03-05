@@ -1,0 +1,17 @@
+---
+# On-Premise specific variables
+services_to_check:
+  - httpd
+  - firewalld
+  - chronyd
+
+ports_to_check:
+  - 22
+  - 80
+  - 443
+
+ssl_certificates:
+  - /etc/pki/tls/certs/localhost.crt
+
+disk_threshold: 80
+memory_threshold: 90

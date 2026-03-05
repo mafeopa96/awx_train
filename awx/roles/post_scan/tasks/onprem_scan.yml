@@ -1,0 +1,99 @@
+---
+- name: Check service status
+  systemd:
+    name: "{{ item }}"
+  register: service_status
+  loop: "{{ services_to_check }}"
+  ignore_errors: yes
+
+- name: Port scanning
+  wait_for:
+    host: "{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
+    port: "{{ item }}"
+    timeout: 5
+    state: started
+  register: port_scan
+  loop: "{{ ports_to_check }}"
+  ignore_errors: yes
+
+- name: Check disk usage
+  shell: df -h / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+
+- name: Check memory usage
+  shell: free | grep Mem | awk '{printf "%.0f", ($3/$2) * 100.0}'
+  register: memory_usage
+  changed_when: false
+
+- name: Check system load
+  shell: uptime | awk -F'load average:' '{print $2}'
+  register: system_load
+  changed_when: false
+
+- name: Check for failed systemd units
+  shell: systemctl list-units --failed --no-pager
+  register: failed_units
+  changed_when: false
+
+- name: Scan for listening ports
+  shell: ss -tulnp | grep LISTEN
+  register: listening_ports
+  changed_when: false
+
+- name: Check SELinux status
+  shell: getenforce
+  register: selinux_status
+  changed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Save On-Prem scan results
+  copy:
+    content: |
+      ====================================
+      ON-PREMISE SCAN RESULTS
+      ====================================
+      Timestamp: {{ scan_timestamp }}
+      Host: {{ inventory_hostname }}
+      IP Address: {{ ansible_default_ipv4.address | default('N/A') }}
+      OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+      Kernel: {{ ansible_kernel }}
+      
+      SERVICES STATUS:
+      {% for result in service_status.results %}
+      - {{ result.item }}: {{ result.status.ActiveState | default('UNKNOWN') }}
+      {% endfor %}
+      
+      PORT SCAN RESULTS:
+      {% for result in port_scan.results %}
+      - Port {{ result.item }}: {{ 'OPEN' if result.failed == false else 'CLOSED' }}
+      {% endfor %}
+      
+      SYSTEM RESOURCES:
+      - Disk Usage: {{ disk_usage.stdout }}%
+      - Memory Usage: {{ memory_usage.stdout }}%
+      - System Load: {{ system_load.stdout }}
+      
+      {% if selinux_status is defined %}
+      SELINUX STATUS: {{ selinux_status.stdout }}
+      {% endif %}
+      
+      FAILED UNITS:
+      {{ failed_units.stdout }}
+      
+      LISTENING PORTS:
+      {{ listening_ports.stdout }}
+      
+    dest: "{{ report_dir }}/onprem_{{ inventory_hostname }}.txt"
+  delegate_to: localhost
+
+- name: Check for high resource usage
+  set_fact:
+    resource_alerts:
+      - "{% if disk_usage.stdout | int > disk_threshold %}ALERT: Disk usage is {{ disk_usage.stdout }}% (threshold: {{ disk_threshold }}%){% endif %}"
+      - "{% if memory_usage.stdout | int > memory_threshold %}ALERT: Memory usage is {{ memory_usage.stdout }}% (threshold: {{ memory_threshold }}%){% endif %}"
+
+- name: Display resource alerts
+  debug:
+    msg: "{{ resource_alerts | select() | list }}"
+  when: resource_alerts | select() | list | length > 0

@@ -1,0 +1,117 @@
+---
+- name: Check if kubectl is available
+  command: which kubectl
+  register: kubectl_check
+  changed_when: false
+  failed_when: false
+  delegate_to: localhost
+
+- name: Display kubectl status
+  debug:
+    msg: "kubectl is {{ 'available' if kubectl_check.rc == 0 else 'NOT available' }}"
+
+- block:
+    - name: Get all pods status
+      shell: kubectl get pods -n {{ k8s_namespace }} -o json
+      register: pods_raw
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Parse pods information
+      set_fact:
+        pods_info: "{{ pods_raw.stdout | from_json }}"
+
+    - name: Get all services
+      shell: kubectl get services -n {{ k8s_namespace }} -o json
+      register: services_raw
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Parse services information
+      set_fact:
+        services_info: "{{ services_raw.stdout | from_json }}"
+
+    - name: Get all deployments
+      shell: kubectl get deployments -n {{ k8s_namespace }} -o json
+      register: deployments_raw
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Parse deployments information
+      set_fact:
+        deployments_info: "{{ deployments_raw.stdout | from_json }}"
+
+    - name: Check pod resource usage
+      shell: kubectl top pods -n {{ k8s_namespace }} --no-headers 2>/dev/null || echo "Metrics not available"
+      register: pod_resources
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Get events
+      shell: kubectl get events -n {{ k8s_namespace }} --sort-by='.lastTimestamp' | tail -20
+      register: k8s_events
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Check for unhealthy pods
+      set_fact:
+        unhealthy_pods: "{{ pods_info.items | selectattr('status.phase', 'ne', 'Running') | list }}"
+
+    - name: Save K8s scan results
+      copy:
+        content: |
+          ====================================
+          KUBERNETES SCAN RESULTS
+          ====================================
+          Timestamp: {{ scan_timestamp }}
+          Namespace: {{ k8s_namespace }}
+          
+          CLUSTER SUMMARY:
+          - Total Pods: {{ pods_info.items | length }}
+          - Running Pods: {{ pods_info.items | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+          - Unhealthy Pods: {{ unhealthy_pods | length }}
+          - Total Services: {{ services_info.items | length }}
+          - Total Deployments: {{ deployments_info.items | length }}
+          
+          POD RESOURCE USAGE:
+          {{ pod_resources.stdout }}
+          
+          {% if unhealthy_pods | length > 0 %}
+          UNHEALTHY PODS:
+          {% for pod in unhealthy_pods %}
+          - {{ pod.metadata.name }}: {{ pod.status.phase }}
+            Reason: {{ pod.status.reason | default('N/A') }}
+          {% endfor %}
+          {% endif %}
+          
+          RECENT EVENTS:
+          {{ k8s_events.stdout }}
+          
+          DEPLOYMENTS STATUS:
+          {% for deploy in deployments_info.items %}
+          - {{ deploy.metadata.name }}:
+            Replicas: {{ deploy.status.replicas | default(0) }}/{{ deploy.spec.replicas }}
+            Available: {{ deploy.status.availableReplicas | default(0) }}
+          {% endfor %}
+          
+        dest: "{{ report_dir }}/k8s_{{ k8s_namespace }}.txt"
+      delegate_to: localhost
+
+  when: kubectl_check.rc == 0
+  rescue:
+    - name: Handle kubectl errors
+      copy:
+        content: |
+          ====================================
+          KUBERNETES SCAN ERROR
+          ====================================
+          Timestamp: {{ scan_timestamp }}
+          
+          kubectl is not available or not configured properly.
+          Please ensure:
+          1. kubectl is installed
+          2. Cluster credentials are configured
+          3. You have access to the cluster
+          
+        dest: "{{ report_dir }}/k8s_error.txt"
+      delegate_to: localhost

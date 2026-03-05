@@ -1,0 +1,30 @@
+---
+- name: Post-Deployment Security and Health Scanning
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Display scan information
+      debug:
+        msg:
+          - "Starting post-deployment scan"
+          - "Deployment Type: {{ deployment_type }}"
+          - "Target Hosts: {{ inventory_hostname }}"
+          - "Timestamp: {{ scan_timestamp }}"
+
+    - name: Create report directory
+      file:
+        path: "{{ report_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      run_once: true
+
+  roles:
+    - role: post_scan
+
+  post_tasks:
+    - name: Display completion message
+      debug:
+        msg: "Scan completed successfully. Report available at: {{ report_dir }}"
+      run_once: true

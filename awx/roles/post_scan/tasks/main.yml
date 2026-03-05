@@ -1,0 +1,20 @@
+---
+- name: Load environment-specific variables
+  include_vars:
+    file: "{{ deployment_type }}.yml"
+  when: deployment_type is defined
+
+- name: Execute On-Premise Scans
+  include_tasks: onprem_scan.yml
+  when: deployment_type == "onprem"
+
+- name: Execute Kubernetes/GKE Scans
+  include_tasks: k8s_scan.yml
+  when: deployment_type == "k8s"
+
+- name: Generate consolidated report
+  include_tasks: generate_report.yml
+
+- name: Send notification
+  include_tasks: notify.yml
+  when: send_notifications | default(false) | bool

@@ -1,0 +1,13 @@
+---
+# Kubernetes/GKE specific variables
+gke_cluster_name: "lab-cluster"
+gke_zone: "us-central1-a"
+gcp_project_id: "redhat-lab-project"
+k8s_namespace: "default"
+
+container_images:
+  - "nginx:latest"
+  - "redis:alpine"
+
+check_resource_limits: true
+check_security_policies: true

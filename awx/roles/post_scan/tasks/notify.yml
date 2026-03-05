@@ -1,0 +1,23 @@
+---
+- name: Send email notification
+  mail:
+    host: "{{ smtp_server }}"
+    port: "{{ smtp_port }}"
+    to: "{{ notification_email }}"
+    subject: "Post-Deployment Scan Completed - {{ scan_timestamp }}"
+    body: |
+      Post-deployment scan has been completed.
+      
+      Deployment Type: {{ deployment_type }}
+      Scan Timestamp: {{ scan_timestamp }}
+      Hosts Scanned: {{ ansible_play_hosts | length }}
+      
+      Report available at: {{ report_dir }}
+  delegate_to: localhost
+  run_once: true
+  ignore_errors: yes
+
+- name: Log notification attempt
+  debug:
+    msg: "Notification sent to {{ notification_email }}"
+  run_once: true

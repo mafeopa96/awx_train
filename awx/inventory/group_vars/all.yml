@@ -1,0 +1,11 @@
+---
+# Global Variables
+scan_timestamp: "{{ ansible_date_time.iso8601 }}"
+report_base_dir: "/tmp/scan_reports"
+report_dir: "{{ report_base_dir }}/{{ scan_timestamp }}"
+send_notifications: false
+
+# Notification settings
+notification_email: "admin@example.com"
+smtp_server: "localhost"
+smtp_port: 25
