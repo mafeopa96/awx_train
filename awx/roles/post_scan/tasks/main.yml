@@ -1,7 +1,7 @@
 ---
 - name: Load environment-specific variables
   include_vars:
-    file: "{{ deployment_type }}.yml"
+    file: "awx/inventory/group_vars/{{ deployment_type }}.yml"
   when: deployment_type is defined
 
 - name: Execute On-Premise Scans
@@ -18,3 +18,4 @@
 - name: Send notification
   include_tasks: notify.yml
   when: send_notifications | default(false) | bool
+
